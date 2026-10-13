@@ -1,0 +1,11 @@
+# Credentials
+*.env
+!*.env.example
+.env*
+
+# Export output (contains account data)
+exports/
+
+# Python
+__pycache__/
+*.pyc

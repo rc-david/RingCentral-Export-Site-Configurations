@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RingCentral - Export Site Configurations</title>
+<style>
+:root{font-family:system-ui,sans-serif;font-size:13px;color:#203047;background:#eef2f7;color-scheme:light}
+*{box-sizing:border-box}body{margin:0}header{background:#163454;color:white;padding:12px 20px}
+h1{font-size:20px;margin:0}h2{font-size:16px;margin:0 0 8px}h3{font-size:13px;margin:0 0 6px}
+main{padding:12px 16px}p{margin:6px 0}button,input,select{font:inherit;border:1px solid #b6c4d4;border-radius:4px;background:white;padding:6px 8px}
+button,summary{cursor:pointer}button:disabled{cursor:default;opacity:.5}button:hover:not(:disabled){background:#e8f1fc}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #1266aa;outline-offset:2px}
+.panel{background:white;border:1px solid #d7dfe9;border-radius:6px;padding:10px;margin-bottom:10px}
+.stats,.downloads,.toolbar,.pager,.tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.stats{gap:16px}.stats span{white-space:nowrap}.downloads a{padding:3px 0;color:#145c99}
+.muted{color:#627086}.notice{border-left:3px solid #bd7d00;background:#fff3dc;color:#714700;padding:7px 10px;margin:6px 0}
+.tabs button[aria-pressed=true]{background:#163454;color:white;border-color:#163454}
+.toolbar{padding:8px 0}.toolbar label{display:flex;gap:5px;align-items:center}.toolbar input{min-width:190px;width:260px;max-width:100%}
+.workspace{display:grid;grid-template-columns:minmax(0,3fr) minmax(340px,2fr);gap:12px;align-items:start}
+.table-panel{min-width:0}.table-scroll{overflow:auto;max-height:70vh;border:1px solid #d7dfe9}
+table{border-collapse:collapse;width:100%;text-align:left}th{background:#eaf0f7;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+th,td{padding:6px 8px;border-bottom:1px solid #dde5ee;vertical-align:top}thead th{position:sticky;top:0;z-index:1}
+tbody tr:nth-child(even){background:#f7f9fc}tbody tr.selected{background:#dceafb}
+td .open-record{border:0;background:none;color:#145c99;padding:0;text-align:left;font-weight:600}
+#records{table-layout:fixed;min-width:100%}#records th,#records td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+#records th{padding-right:16px}#records .open-record{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.summary-text{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.4}
+.schedule-day{display:grid;grid-template-columns:85px minmax(0,1fr);gap:8px;line-height:1.5}
+.schedule-day span,.schedule-range{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.column-resizer{position:absolute;right:0;top:0;bottom:0;width:10px;cursor:col-resize;touch-action:none;border-right:2px solid #b6c4d4}
+.column-resizer:hover,.column-resizer:focus-visible{background:#c6d9ee;outline:2px solid #1266aa;outline-offset:-2px}
+body.resizing,body.resizing *{cursor:col-resize!important;user-select:none!important}
+.small{font-size:11px}.badge{display:inline-block;font-size:11px;border-radius:3px;padding:2px 5px;background:#e8edf4;white-space:nowrap}
+.good{background:#d9f1e2;color:#22643d}.warn{background:#fff0d3;color:#875500}.disabled{color:#687587}
+.pager{justify-content:space-between;margin-top:8px}.pager-controls{display:flex;gap:6px;align-items:center}
+.detail-panel{position:sticky;top:8px;max-height:88vh;overflow:auto;min-width:0}
+.detail-head{border-bottom:1px solid #d7dfe9;padding-bottom:8px;margin-bottom:8px}
+.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.detail-group{border:1px solid #dfe6ef;border-radius:4px;padding:8px;min-width:0;background:#fafbfd}
+.wide{grid-column:1/-1}dl{margin:0}dl>div{display:grid;grid-template-columns:minmax(75px,35%) minmax(0,1fr);gap:6px;padding:3px 0;border-bottom:1px solid #e8edf3}
+dt{font-weight:600;font-size:11px;color:#536277;overflow-wrap:anywhere}dd{margin:0;overflow-wrap:anywhere}
+details{margin:6px 0}summary{font-weight:600;padding:4px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#edf2f7;padding:8px;font-size:11px}
+.detail-tools{display:flex;gap:6px;margin:6px 0}.schedule{font-size:12px}.schedule td,.schedule th{padding:3px 5px}
+#category-note{font-size:12px}#print-note{display:none}[hidden]{display:none!important}
+@media(min-width:1800px){.workspace{grid-template-columns:minmax(0,7fr) minmax(400px,3fr)}}
+@media(max-width:1000px){.workspace{grid-template-columns:1fr}.detail-panel{position:static;max-height:none}.table-scroll{max-height:55vh}}
+@media(max-width:500px){main{padding:8px}.detail-grid{grid-template-columns:1fr}.toolbar label{width:100%;justify-content:space-between}.toolbar input{width:100%}.pager{align-items:flex-start}.pager-controls{flex-wrap:wrap}}
+@media print{header{color:black;background:white}main{padding:0}.toolbar,.tabs,.pager,.downloads,.detail-tools,#print{display:none!important}
+.workspace{display:block}.table-scroll,.detail-panel{max-height:none;overflow:visible;position:static}.panel{border:0}thead th{position:static}.summary-text{display:block;max-height:none;overflow:visible}
+#records{table-layout:auto;width:100%!important;min-width:0}#records col{width:auto!important}#records th,#records td,#records .open-record,.summary-text,.schedule-day span,.schedule-range{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:normal}
+.column-resizer{display:none}#print-note{display:block}.detail-group{break-inside:avoid}.open-record{color:black!important}}
+</style>
+</head>
+<body>
+<header><h1>RingCentral - Export Site Configurations</h1><p id="account-line"></p></header>
+<main>
+<section class="panel">
+<div class="stats" id="stats"></div>
+<p class="muted small">Confidential offline snapshot. No live API requests. Select a row to inspect its details.</p>
+<div id="export-warning"></div>
+<details id="diagnostics"><summary id="diagnostic-label">Export notes and diagnostics</summary><div id="diagnostic-content"></div></details>
+<details><summary>Download JSON / structured CSV</summary><div class="downloads"><!-- DOWNLOAD_LINKS --></div></details>
+</section>
+<nav class="tabs" aria-label="Data categories">
+<button data-category="answeringRules" aria-pressed="true">Rules</button>
+<button data-category="settings" aria-pressed="false">Site settings</button>
+<button data-category="members" aria-pressed="false">Members</button>
+<button data-category="phoneNumbers" aria-pressed="false">Phone numbers</button>
+<button data-category="ivrMenus" aria-pressed="false">IVR menus</button>
+<button data-category="emergencyLocations" aria-pressed="false">Emergency locations</button>
+</nav>
+<div class="toolbar">
+<label>Search <input id="search" type="search" placeholder="Name, ID, schedule, destination..."></label>
+<label>Site <select id="site-filter"><option value="">All exported sites</option></select></label>
+<label class="rule-filter">Type <select id="type-filter"><option value="">All rules</option><option value="Custom">Custom</option><option value="BusinessHours">Business hours</option><option value="AfterHours">After hours</option></select></label>
+<label class="rule-filter">State <select id="state-filter"><option value="">All states</option><option value="true">Enabled</option><option value="false">Disabled</option><option value="unknown">Unknown</option></select></label>
+<label>Details <select id="detail-filter"><option value="">All statuses</option><option value="complete">Complete</option><option value="incomplete">Incomplete</option><option value="unknown">Unknown</option></select></label>
+<label>Rows <select id="page-size"><option value="10">10</option><option value="50" selected>50</option><option value="100">100</option><option value="500">500</option><option value="all">All</option></select></label>
+<button id="reset">Reset filters</button><button id="reset-widths">Reset column widths</button><button id="print">Print filtered results</button>
+</div>
+<p id="category-note"></p>
+<p id="print-note"></p>
+<div class="workspace">
+<section class="panel table-panel" aria-label="Record table">
+<div class="table-scroll"><table id="records"><colgroup id="column-widths"></colgroup><thead id="columns"></thead><tbody id="rows"></tbody></table></div>
+<div class="pager">
+<span id="matches" role="status" aria-live="polite"></span>
+<div class="pager-controls"><button id="previous">Previous</button><span id="page-label"></span><button id="next">Next</button></div>
+</div>
+</section>
+<aside class="panel detail-panel" id="record-detail" aria-label="Selected record details"><p class="muted">Choose a record to view its details.</p></aside>
+</div>
+<noscript><p class="notice">Enable JavaScript to use the report. Full data remains available in the JSON and CSV exports.</p></noscript>
+</main>
+<script type="application/json" id="report-data"><!-- REPORT_DATA --></script>
+<script>
+'use strict';
+const data = JSON.parse(document.getElementById('report-data').textContent);
+const $ = id => document.getElementById(id);
+const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const calendarWords = /(?<![a-z])(monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)(?![a-z])/gi;
+const capitalizeCalendar = text => String(text).replace(calendarWords, word => word[0].toUpperCase()+word.slice(1).toLowerCase());
+const label = key => capitalizeCalendar(key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[._]/g, ' '));
+const scalar = value => value === null || value === undefined ? 'Not returned' : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+const zoneLabel = zone => zone?.value?.name || zone?.value?.description || (zone?.value?.id ? 'Time zone ID '+zone.value.id : 'Not returned');
+const zoneContext = site => 'Schedule time zone: '+zoneLabel(site.timeZone)+' ('+(site.timeZone?.source || 'Not returned')+')';
+const zoneCache = new Map();
+function ianaZone(zone) {
+ const value = zone?.value || {};
+ const candidates = [value.isoName,typeof value.name==='string' && (/[/]/.test(value.name) || /^(UTC|GMT)$/.test(value.name)) ? value.name : null].filter(Boolean);
+ const key = JSON.stringify(candidates);
+ if (!zoneCache.has(key)) {
+  let valid = null;
+  for (const name of candidates) {
+   try { new Intl.DateTimeFormat('en-US',{timeZone:name}); valid = name; break; }
+   catch (error) { if (!(error instanceof RangeError)) throw error; }
+  }
+  zoneCache.set(key,valid);
+ }
+ return zoneCache.get(key);
+}
+function friendlyTime(value) {
+ const text = scalar(value), match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(text);
+ if (!match) return text;
+ const [,h,m,s] = match, hour = Number(h);
+ if (Number(m)>59 || (s !== undefined && Number(s)>59) || hour>24 || (hour===24 && (Number(m)!==0 || Number(s || 0)!==0))) return text+' (invalid time)';
+ if (hour===24) return '12:00 AM (end of day)';
+ return (hour%12 || 12)+':'+m+(s !== undefined ? ':'+s : '')+' '+(hour<12 ? 'AM' : 'PM');
+}
+const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function friendlyDate(value,zone) {
+ const text = scalar(value);
+ const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)(Z|[+-]\d{2}:?\d{2})?)?$/.exec(text);
+ if (!match) return text;
+ const [,y,m,d,time,offset] = match;
+ const check = new Date(y+'-'+m+'-'+d+'T00:00:00Z');
+ if (Number.isNaN(check.getTime()) || check.getUTCDate()!==Number(d) || check.getUTCMonth()+1!==Number(m)) return text+' (invalid date)';
+ if (offset) {
+  const instant = new Date(text);
+  if (Number.isNaN(instant.getTime())) return text+' (invalid date/time)';
+  const target = ianaZone(zone);
+  if (target) return new Intl.DateTimeFormat('en-US',{timeZone:target,month:'long',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',...(time.split(':').length>2 ? {second:'2-digit'} : {}),hour12:true,timeZoneName:'short'}).format(instant);
+ }
+ const clock = time ? friendlyTime(time.replace(/\.\d+$/,''))+(time.includes('.') ? ' (fractional seconds: '+time.split('.')[1]+')' : '') : '';
+ return monthNames[Number(m)-1]+' '+Number(d)+', '+y+(clock ? ', '+clock : '')+(offset ? ' '+(offset==='Z' ? 'UTC' : 'UTC'+offset) : '');
+}
+function displayScalar(value,key,path,zone) {
+ if (typeof value !== 'string') return scalar(value);
+ if (/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(value)) return friendlyDate(value,zone);
+ if (/^(from|to)$/.test(key) && /schedule|weekly ranges|ranges/i.test(path)) return friendlyTime(value);
+ if (/^(day|month|dayOfWeek)$/i.test(key)) return capitalizeCalendar(value);
+ return value;
+}
+function fields(value,zone=null) {
+ if (value === null || value === undefined) return '<span class="muted">Unavailable or not returned</span>';
+ if (typeof value !== 'object') return escape(scalar(value));
+ const rows = [];
+ function flatten(item,path,key='') {
+  if (Array.isArray(item) && item.length) item.forEach((v,i) => flatten(v,path+' ['+(i+1)+']',key));
+  else if (item && typeof item === 'object' && Object.keys(item).length) {
+   for (const [key,v] of Object.entries(item)) flatten(v,path ? path+' / '+label(key) : label(key),key);
+  } else rows.push([path || 'Value',Array.isArray(item) ? 'None listed' : item && typeof item === 'object' ? 'No fields returned' : displayScalar(item,key,path,zone)]);
+ }
+ flatten(value,'');
+ return '<dl>'+rows.map(([key,v]) => '<div><dt>'+escape(key)+'</dt><dd>'+escape(v)+'</dd></div>').join('')+'</dl>';
+}
+function scheduleText(schedule,zone=null) {
+ if (!schedule) return 'Not returned';
+ if (schedule.ref) return String(schedule.ref);
+ if (schedule.weeklyRanges) return Object.entries(schedule.weeklyRanges).filter(([,ranges]) => ranges.length).map(([day,ranges]) => capitalizeCalendar(day).slice(0,3)+' '+ranges.map(r => friendlyTime(r.from)+' - '+friendlyTime(r.to)).join(', ')).join('; ') || 'No weekly ranges';
+ if (schedule.ranges) return schedule.ranges.map(r => friendlyDate(r.from,zone)+' - '+friendlyDate(r.to,zone)).join('; ') || 'No date ranges';
+ return Object.keys(schedule).length ? JSON.stringify(schedule) : '24/7';
+}
+function scheduleCell(schedule,zone) {
+ if (schedule?.weeklyRanges && !schedule.ref) {
+  const days = Object.entries(schedule.weeklyRanges).filter(([,ranges]) => ranges.length);
+  return days.length ? days.map(([day,ranges]) => {
+   const hours = ranges.map(r => friendlyTime(r.from)+' - '+friendlyTime(r.to)).join(', ');
+   return '<div class="schedule-day"><span>'+escape(capitalizeCalendar(day))+'</span><span title="'+escape(hours)+'">'+escape(hours)+'</span></div>';
+  }).join('') : escape('No weekly ranges');
+ }
+ if (schedule?.ranges && !schedule.ref) return schedule.ranges.map(range => {
+  const text = friendlyDate(range.from,zone)+' - '+friendlyDate(range.to,zone);
+  return '<div class="schedule-range" title="'+escape(text)+'">'+escape(text)+'</div>';
+ }).join('') || 'No date ranges';
+ const text = scheduleText(schedule,zone);
+ return '<span class="summary-text" title="'+escape(text)+'">'+escape(text)+'</span>';
+}
+function destinationText(rule) {
+ const transfer = rule.transfer?.extension;
+ const parts = [];
+ if (transfer) parts.push(transfer.name || transfer.extensionNumber || transfer.id || transfer.uri || 'Extension');
+ if (rule.unconditionalForwarding?.phoneNumber) parts.push(rule.unconditionalForwarding.phoneNumber);
+ for (const route of rule.forwarding?.rules || []) for (const number of route.forwardingNumbers || []) parts.push(number.phoneNumber || number.label || number.id || 'Forwarding target');
+ if (rule.voicemail?.recipient) {
+  const recipient = rule.voicemail.recipient;
+  parts.push('Voicemail: '+(recipient.extensionNumber || recipient.displayName || recipient.id || 'recipient'));
+ }
+ return parts.join('; ') || 'Not returned';
+}
+const categoryNames = {answeringRules:'rules',settings:'site settings',members:'members',phoneNumbers:'phone numbers',ivrMenus:'IVR menus',emergencyLocations:'emergency locations'};
+const categories = Object.fromEntries(Object.keys(categoryNames).map(k => [k,[]]));
+const excludedSettings = new Set(['answeringRules','answeringRuleDetails','members','phoneNumbers','ivrMenus','ivrMenuDetails','emergencyLocations','emergencyLocationDetails']);
+for (const site of data.sites) {
+ const settings = Object.fromEntries(Object.entries(site).filter(([key]) => !excludedSettings.has(key)));
+ for (const category of Object.keys(categories)) {
+  const records = category === 'settings' ? [settings] : site[category] || [];
+  const detailKey = {answeringRules:'answeringRuleDetails',ivrMenus:'ivrMenuDetails',emergencyLocations:'emergencyLocationDetails'}[category];
+  records.forEach((record,index) => {
+   const status = category === 'settings'
+    ? {status: Object.values(site.dataStatus || {}).some(s => s.status !== 'complete') || site.errors?.length ? 'incomplete' : 'complete'}
+    : (detailKey ? site[detailKey]?.[index] : site.dataStatus?.[category]) || {status:'unknown'};
+   const item = {key:category+':'+categories[category].length,site,index,record,status};
+   item.schedule = scheduleText(record.schedule,site.timeZone);
+   item.destination = destinationText(record);
+   item.search = (site.name+' '+site.id+' '+JSON.stringify(record)+' '+JSON.stringify(status)+' '+item.schedule+' '+zoneContext(site)+' '+item.destination).toLowerCase();
+   categories[category].push(item);
+  });
+ }
+ const option = document.createElement('option'); option.value = site.id; option.textContent = site.name+' ('+site.id+')'; $('site-filter').append(option);
+}
+document.title = 'RingCentral - Export Site Configurations - '+(data.account.name || data.account.id || 'Account');
+$('account-line').textContent = (data.account.name || 'Account')+' | '+data.account.id+' | Account time zone: '+zoneLabel(data.account.timeZone)+' ('+(data.account.timeZone?.source || 'Not returned')+') | Exported '+friendlyDate(data.finishedAt,ianaZone(data.account.timeZone) ? data.account.timeZone : {value:{name:'UTC'}});
+$('stats').innerHTML = Object.entries(data.counts).map(([k,v]) => '<span><strong>'+escape(v)+'</strong> '+escape(label(k))+'</span>').join('');
+if (data.errors.length) $('export-warning').innerHTML = '<p class="notice">Export is incomplete. Counts cover discovered records only; unavailable listings have unknown counts, not zero.</p>';
+$('diagnostic-label').textContent = 'Export notes and unavailable endpoints ('+data.errors.length+')';
+$('diagnostic-content').innerHTML = '<ul>'+data.notes.map(n => '<li>'+escape(n)+'</li>').join('')+'</ul>'+fields(data.errors);
+let category = 'answeringRules', page = 1, selectedKey = null, filtered = [];
+const columnWidths = {};
+const defaultWidths = () => category === 'answeringRules' ? [160,50,280,135,100,520,170,300,100] : [180,300,500,110];
+function applyColumnWidths() {
+ const widths = columnWidths[category] || defaultWidths();
+ $('column-widths').innerHTML = widths.map(width => '<col style="width:'+width+'px">').join('');
+ $('records').style.width = widths.reduce((sum,width) => sum+width,0)+'px';
+ for (const handle of $('columns').querySelectorAll('.column-resizer')) handle.setAttribute('aria-valuenow',Math.round(widths[Number(handle.dataset.column)]));
+}
+function measuredWidths() {
+ return [...$('columns').querySelectorAll('th')].map(cell => cell.getBoundingClientRect().width);
+}
+$('columns').addEventListener('pointerdown',event => {
+ const handle = event.target.closest('.column-resizer');
+ if (!handle || event.button !== 0) return;
+ event.preventDefault();
+ const index = Number(handle.dataset.column), startX = event.clientX, widths = measuredWidths();
+ const activeCategory = category;
+ handle.setPointerCapture(event.pointerId);
+ document.body.classList.add('resizing');
+ const move = event => {
+  if (category !== activeCategory) { finish(); return; }
+  columnWidths[category] = widths.map((width,i) => i===index ? Math.max(48,Math.round(width+event.clientX-startX)) : width);
+  applyColumnWidths();
+ };
+ const finish = () => {
+  document.body.classList.remove('resizing');
+  handle.removeEventListener('pointermove',move);
+  handle.removeEventListener('pointerup',finish);
+  handle.removeEventListener('pointercancel',finish);
+  handle.removeEventListener('lostpointercapture',finish);
+ };
+ handle.addEventListener('pointermove',move);
+ handle.addEventListener('pointerup',finish);
+ handle.addEventListener('pointercancel',finish);
+ handle.addEventListener('lostpointercapture',finish);
+});
+$('columns').addEventListener('keydown',event => {
+ const handle = event.target.closest('.column-resizer');
+ if (!handle || !['ArrowLeft','ArrowRight'].includes(event.key)) return;
+ event.preventDefault();
+ const index = Number(handle.dataset.column), widths = measuredWidths();
+ widths[index] = Math.max(48,widths[index]+(event.key==='ArrowRight' ? 1 : -1)*(event.shiftKey ? 50 : 10));
+ columnWidths[category] = widths;
+ applyColumnWidths();
+});
+$('reset-widths').onclick = () => { delete columnWidths[category]; applyColumnWidths(); };
+function filterRecords() {
+ const query = $('search').value.trim().toLowerCase();
+ filtered = categories[category].filter(item =>
+  (!query || item.search.includes(query)) &&
+  (!$('site-filter').value || String(item.site.id) === $('site-filter').value) &&
+  (!$('detail-filter').value || item.status.status === $('detail-filter').value) &&
+  (category !== 'answeringRules' || ((!$('type-filter').value || item.record.type === $('type-filter').value) &&
+   (!$('state-filter').value || (item.record.enabled === true ? 'true' : item.record.enabled === false ? 'false' : 'unknown') === $('state-filter').value))));
+}
+function rowCells(item) {
+ const r = item.record, status = item.status.status;
+ const compact = text => '<span class="summary-text" title="'+escape(text)+'">'+escape(text)+'</span>';
+ const title = r.name || r.phoneNumber || r.extensionNumber || r.id || 'Unnamed';
+ const select = '<button class="open-record" title="'+escape(title)+'" data-key="'+item.key+'">'+escape(title)+'</button><div class="small muted">'+escape(r.id)+'</div>';
+ const badge = '<span class="badge '+(status === 'complete' ? 'good' : 'warn')+'">'+escape(status)+'</span>';
+ if (category === 'answeringRules') return [compact(item.site.name),item.index+1,select,escape(r.type),'<span class="'+(r.enabled === false ? 'disabled' : '')+'">'+(r.enabled === true ? 'Enabled' : r.enabled === false ? 'Disabled' : 'Unknown')+'</span>',scheduleCell(r.schedule,item.site.timeZone)+'<div class="small muted">'+escape(zoneLabel(item.site.timeZone))+'</div>',compact(r.callHandlingAction || ''),compact(item.destination),badge];
+ let summary;
+ if (category === 'phoneNumbers') summary = [r.location,r.usageType,r.paymentType,r.status].filter(Boolean).join(' | ');
+ else if (category === 'members') summary = [r.extensionNumber,r.type,r.status,r.contact?.email].filter(Boolean).join(' | ');
+ else if (category === 'ivrMenus') summary = (r.actions?.length ?? 0)+' actions | Extension '+(r.extensionNumber ?? 'Not returned');
+ else if (category === 'emergencyLocations') summary = [r.address?.street,r.address?.city,r.address?.state,r.address?.zip].filter(Boolean).join(', ');
+ else summary = 'Site ID '+item.site.id+' | Extension '+(item.site.extensionNumber ?? 'Not returned');
+ return [compact(item.site.name),select,compact(summary),badge];
+}
+function renderRows(items) {
+ $('rows').innerHTML = items.map(item => '<tr data-key="'+item.key+'" class="'+(selectedKey === item.key ? 'selected' : '')+'" aria-selected="'+(selectedKey === item.key)+'">'+rowCells(item).map(cell => '<td>'+cell+'</td>').join('')+'</tr>').join('');
+}
+function renderTable() {
+ const size = $('page-size').value === 'all' ? Math.max(1,filtered.length) : Number($('page-size').value);
+ const pages = Math.max(1,Math.ceil(filtered.length/size));
+ page = Math.max(1,Math.min(page,pages));
+ const start = (page-1)*size;
+ const columns = category === 'answeringRules' ? ['Site','#','Rule / ID','Type','State','Schedule','Action','Destination','Details'] : ['Site','Record / ID','Summary','Details'];
+ $('columns').innerHTML = '<tr>'+columns.map((c,index) => '<th scope="col">'+c+'<span class="column-resizer" data-column="'+index+'" role="separator" aria-orientation="vertical" aria-label="Resize '+c+' column" aria-valuemin="48" tabindex="0" title="Drag to resize; arrow keys adjust width"></span></th>').join('')+'</tr>';
+ applyColumnWidths();
+ const visible = filtered.slice(start,start+size);
+ if (!visible.some(item => item.key === selectedKey)) showDetail(visible[0]);
+ renderRows(visible);
+ $('matches').textContent = filtered.length ? (start+1)+'-'+Math.min(start+size,filtered.length)+' of '+filtered.length+' matching '+categoryNames[category]+' ('+categories[category].length+' exported)' : '0 matching '+categoryNames[category]+' ('+categories[category].length+' exported)';
+ $('page-label').textContent = 'Page '+page+' of '+pages;
+ $('previous').disabled = page === 1; $('next').disabled = page === pages;
+ $('records').setAttribute('aria-label',categoryNames[category]);
+ const relevantSites = data.sites.filter(s => !$('site-filter').value || String(s.id) === $('site-filter').value);
+ const missing = relevantSites.filter(s => category === 'settings' ? false : s[category] === null || s[category] === undefined);
+ $('category-note').textContent = (missing.length ? missing.map(s => s.name+': '+categoryNames[category]+' listing unavailable; count is unknown, not zero.').join(' ') : 'Search covers every returned field in this category, across all pages. Click a record name for full details.')+' Drag a column header edge to resize, or focus its handle and use arrow keys. Scroll horizontally for more columns.';
+}
+function showDetail(item) {
+ selectedKey = item?.key ?? null;
+ if (!item) { $('record-detail').innerHTML = '<p class="muted">No matching record. Adjust the filters.</p>'; return; }
+ const r = item.record, group = (title,value,wide=false) => '<section class="detail-group'+(wide ? ' wide' : '')+'"><h3>'+title+'</h3>'+value+'</section>';
+ const detailFields = value => fields(value,item.site.timeZone);
+ let groups = '';
+ if (category === 'answeringRules') {
+  const known = new Set(['id','name','type','enabled','uri','schedule','calledNumbers','callers','transfer','unconditionalForwarding','forwarding','voicemail','greetings','screening','callHandlingAction']);
+  groups += group('Identity & status',detailFields({id:r.id,type:r.type,enabled:r.enabled,action:r.callHandlingAction}));
+  let schedule = detailFields(r.schedule);
+  if (r.schedule?.weeklyRanges) schedule = '<table class="schedule"><thead><tr><th>Day</th><th>Hours</th></tr></thead><tbody>'+Object.entries(r.schedule.weeklyRanges).map(([day,ranges]) => '<tr><td>'+escape(capitalizeCalendar(day))+'</td><td>'+escape(ranges.map(x => friendlyTime(x.from)+' - '+friendlyTime(x.to)).join(', ') || 'None')+'</td></tr>').join('')+'</tbody></table>';
+  groups += group('Schedule',schedule);
+  groups += group('Caller conditions / called numbers',detailFields({callers:r.callers,calledNumbers:r.calledNumbers}));
+  groups += group('Routing & destinations',detailFields({transfer:r.transfer,forwarding:r.forwarding,unconditionalForwarding:r.unconditionalForwarding}));
+  if (r.voicemail !== undefined) groups += group('Voicemail',detailFields(r.voicemail));
+  if (r.greetings !== undefined || r.screening !== undefined) groups += group('Greetings & screening',detailFields({greetings:r.greetings,screening:r.screening}));
+  const additional = Object.fromEntries(Object.entries(r).filter(([k]) => !known.has(k)));
+  if (Object.keys(additional).length) groups += group('Additional returned fields',detailFields(additional),true);
+ } else if (category === 'settings') {
+  const titles = {detail:'Site settings',account:'Company settings',extension:'Site extension',businessHours:'Business hours',ivr:'IVR settings',dataStatus:'Collection status',errors:'Site diagnostics',list:'Discovery record'};
+  for (const [key,title] of Object.entries(titles)) if (key in r) groups += group(title,detailFields(r[key]),key === 'errors');
+  groups += group('Identity',detailFields({id:r.id,name:r.name,extensionNumber:r.extensionNumber,mainSite:r.mainSite,synthetic:r.synthetic}));
+ } else {
+  const scalarFields = Object.fromEntries(Object.entries(r).filter(([,v]) => v === null || typeof v !== 'object'));
+  groups += group('Identity & properties',detailFields(scalarFields),true);
+  for (const [key,value] of Object.entries(r)) if (value !== null && typeof value === 'object') groups += group(escape(label(key)),detailFields(value));
+ }
+ const error = item.status.error ? '<p class="notice">Listing entry only: '+escape(item.status.error.message)+'</p>' : '';
+ const dateNote = r.schedule?.ranges && !ianaZone(item.site.timeZone) ? ' | Dated values retain their returned offsets; no IANA time zone was available for conversion.' : '';
+ $('record-detail').innerHTML = '<div class="detail-head"><h2 tabindex="-1">'+escape(r.name || r.phoneNumber || r.id || 'Record')+'</h2><p class="small muted">'+escape(item.site.name)+' | ID '+escape(r.id)+' | Details: '+escape(item.status.status)+'</p><p class="small muted">'+escape(zoneContext(item.site)+dateNote)+'</p>'+error+'</div><div class="detail-grid">'+groups+'</div><div class="detail-tools"><button id="expand">Expand technical details</button><button id="collapse">Collapse technical details</button></div><details><summary>All returned fields</summary>'+detailFields(r)+'</details><details><summary>Raw record JSON</summary><pre>'+escape(JSON.stringify(r,null,2))+'</pre></details>';
+ $('record-detail').scrollTop = 0;
+ $('expand').onclick = () => { for (const d of $('record-detail').querySelectorAll('details')) d.open = true; };
+ $('collapse').onclick = () => { for (const d of $('record-detail').querySelectorAll('details')) d.open = false; };
+}
+function refresh(resetPage=true) {
+ if (resetPage) page = 1;
+ filterRecords();
+ renderTable();
+}
+$('rows').addEventListener('click',event => {
+ const button = event.target.closest('button[data-key]');
+ if (!button) return;
+ const item = filtered.find(i => i.key === button.dataset.key);
+ showDetail(item); renderTable();
+ $('record-detail').querySelector('h2').focus({preventScroll:true});
+ if (window.matchMedia('(max-width:1000px)').matches) $('record-detail').scrollIntoView({block:'start'});
+});
+for (const id of ['search','site-filter','type-filter','state-filter','detail-filter']) $(id).addEventListener(id === 'search' ? 'input' : 'change',() => refresh());
+$('page-size').onchange = () => { page = 1; renderTable(); };
+$('previous').onclick = () => { page--; renderTable(); };
+$('next').onclick = () => { page++; renderTable(); };
+document.querySelector('.tabs').addEventListener('click',event => {
+ const button = event.target.closest('button[data-category]');
+ if (!button) return;
+ category = button.dataset.category; selectedKey = null;
+ for (const tab of document.querySelectorAll('[data-category]')) tab.setAttribute('aria-pressed',String(tab === button));
+ for (const filter of document.querySelectorAll('.rule-filter')) filter.hidden = category !== 'answeringRules';
+ refresh();
+});
+$('reset').onclick = () => { for (const id of ['search','site-filter','type-filter','state-filter','detail-filter']) $(id).value = ''; refresh(); };
+function preparePrint() {
+ renderRows(filtered);
+ $('print-note').textContent = 'Printed '+filtered.length+' matching '+categoryNames[category]+' across all pages. Detail panel shows the selected record only.';
+}
+window.addEventListener('beforeprint',preparePrint);
+window.addEventListener('afterprint',() => renderTable());
+$('print').onclick = () => { preparePrint(); window.print(); renderTable(); };
+refresh();
+</script>
+</body>
+</html>

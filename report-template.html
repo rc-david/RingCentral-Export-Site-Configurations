@@ -232,6 +232,7 @@ for (const site of data.sites) {
   records.forEach((record,index) => {
    const status = category === 'settings'
     ? {status: Object.values(site.dataStatus || {}).some(s => s.status !== 'complete') || site.errors?.length ? 'incomplete' : 'complete'}
+    : category === 'ringGroupDetails' ? (record.status === 'complete' ? {status:'complete'} : {status:'incomplete',error:{message:record.status}})
     : (detailKey ? site[detailKey]?.[index] : site.dataStatus?.[category]) || {status:'unknown'};
    const item = {key:category+':'+categories[category].length,site,index,record,status};
    item.schedule = scheduleText(record.schedule,site.timeZone);

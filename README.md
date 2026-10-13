@@ -2,9 +2,29 @@
 
 > **Please note:** This is an independent project built on RingCentral's public REST API. It is not an official RingCentral product or tool, is not supported by RingCentral, and will not be maintained by RingCentral. Review the code and your organization's policies before running it against a production account.
 
-Site export to a **searchable offline browser report**, JSON, and CSV.
+Site export to a **searchable offline browser report**, JSON, and CSV, including which
+extension each custom rule sends calls to (with extension names) and, optionally, the
+members, devices and DIDs behind ring group extensions.
 Requires **Python 3.10+**; uses only the standard library. No pip packages,
 web server, or account configuration changes.
+
+## Screenshots
+
+All screenshots use fictional sample data (made-up names, extensions, reserved 555 phone
+numbers and documentation MAC addresses). Nothing here comes from a real account.
+
+**Rules tab**: destinations show the extension name, and clicking a rule lists the ring
+group's members and devices (with `--ring-group-details`).
+
+![Rules tab with ring group members and devices](docs/screenshots/rules.png)
+
+**Number routing tab**: each called number mapped to the extension it routes to.
+
+![Number routing tab](docs/screenshots/number-routing.png)
+
+**Ring group devices tab**: every ring member with their DID, device name, model and MAC/serial.
+
+![Ring group devices tab](docs/screenshots/ring-group-devices.png)
 
 ## Scope: what is collected
 
@@ -26,7 +46,8 @@ restricting exports to a fixed set of known fields.
 
 This is **not an export of each member extension's configuration**. Queues may appear
 in a site's member list, but their queue-specific configuration, presence, and overflow
-settings are not requested. Greetings/prompts include the returned metadata and text,
+settings are not requested. The only per-extension reads are for rule target
+extensions and their ring members, and only with `--ring-group-details`. Greetings/prompts include the returned metadata and text,
 not downloaded audio binaries. "All data" means all fields returned by the listed
 configuration endpoints, not every RingCentral account resource or Admin Portal setting.
 
@@ -75,6 +96,11 @@ The JWT owner also needs the appropriate **user role and access scope**:
 | `CMN-419` reading another extension's rules/business hours | `ReadUserAnsweringRules` with extended scope covering the site extension |
 | `CMN-408` reading IVR menus/settings | `AutoReceptionist` user permission |
 | `CMN-408` reading emergency locations | `ReadEmergencyLocations` user permission |
+
+Reading rule target and ring member extensions, devices and ring settings
+(`--ring-group-details`) needs the same ReadAccounts scope plus permission to read those
+extensions; any read that is denied is logged, shown in the report diagnostics, and
+marked `incomplete` on that row instead of stopping the export.
 
 App scopes and user permissions are separate. Use an authorized administrator or a
 properly scoped custom role; the script cannot bypass permissions. See the
@@ -127,7 +153,8 @@ The browser report opens automatically. It is designed for exports with thousand
 rules, rather than stacking one large card for every rule:
 
 - **Compact table**: site, listing order, rule name/ID, type, enabled state, schedule,
-  action, destination, and completeness status.
+  action, destination (extension targets show the extension name and number), and
+  completeness status.
 - **Resizable columns**: drag the right edge of any column header, or focus its
   resize handle and use Left/Right arrows (Shift for larger steps). Widths remain
   set while filtering, paging, or switching categories in the current report tab.
@@ -139,8 +166,8 @@ rules, rather than stacking one large card for every rule:
 - **Separate detail panel**: click a record name to inspect identity/status, compact
   schedules, caller conditions, routing, voicemail, greetings, and additional fields
   in grouped columns. Full returned fields and raw JSON are collapsed by default.
-- **Category tabs**: Rules, Site settings, Members, Phone numbers, IVR menus, and
-  Emergency locations. Site configuration is no longer buried beneath all rule cards.
+- **Category tabs**: Rules, Site settings, Members, Number routing, Ring group devices
+  (only with `--ring-group-details`), Phone numbers, IVR menus, and Emergency locations. Site configuration is no longer buried beneath all rule cards.
 - **Search and filters**: search every returned field in the active category across
   all pages; filter by site and detail status, and by rule type/enabled state.
 - **Page size**: choose **10, 50, 100, 500, or All**; default is 50. Previous/Next
@@ -238,7 +265,8 @@ row. Complete original objects remain unchanged in `sites.json` and raw JSON.
 
 ## Privacy and development checks
 
-Treat every export, including HTML, as confidential. The HTML makes no API requests
+Treat every export, including HTML, as confidential. Exports can include phone numbers,
+names, extension numbers, and device serial/MAC addresses. The HTML makes no API requests
 and loads no external assets. Account-wide discovery responses may contain records
 from other sites in `raw/responses`; assembled site outputs are limited to your selection.
 

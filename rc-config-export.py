@@ -83,6 +83,8 @@ def parse_args(argv=None):
     parser.add_argument("--all-sites", action="store_true", help="explicitly export all sites")
     parser.add_argument("--site-id", dest="site_ids", action="append", default=[], help="exact site ID; repeat as needed")
     parser.add_argument("--site-name", dest="site_names", action="append", default=[], help="exact, case-sensitive site name; repeat as needed")
+    parser.add_argument("--ring-group-details", action="store_true",
+                        help="also read each custom-rule target extension's devices, phone-line numbers, serial/MAC addresses and ring settings (extra API calls per target)")
     parser.add_argument("--no-open", dest="open", action="store_false", help="save report.html without opening a browser")
     parser.add_argument("--quiet", action="store_true", help="suppress progress; warnings and final summary still print")
     args = parser.parse_args(argv)
@@ -499,11 +501,27 @@ def label(value):
 
 def render_report(result, files):
     report_sites = []
+    routing = number_routing_rows(result["sites"], result.get("targetExtensions"))
     for site in result["sites"]:
-        report_sites.append({key: value for key, value in site.items()
-                             if key not in {"customRules", "customRuleDetails", "answeringRuleListing",
-                                            "ivrMenuListing", "emergencyLocationListing"}})
-    payload = {**result, "sites": report_sites}
+        report_site = {key: value for key, value in site.items()
+                       if key not in {"customRules", "customRuleDetails", "answeringRuleListing",
+                                      "ivrMenuListing", "emergencyLocationListing"}}
+        report_site["numberRouting"] = None if site["customRules"] is None else [
+            {**row, "name": row["calledNumber"] or "(no called number condition)", "id": row["ruleId"]}
+            for row in routing if row["siteId"] == site["id"]]
+        if result.get("ringGroups") is not None:
+            wanted = target_extension_ids([site])
+            members = [m for s in result["sites"] for m in s.get("members") or []]
+            report_site["ringGroupDetails"] = [
+                {**row, "name": row["ringGroupName"] or row["ringGroupExtensionId"], "id": row["ringGroupExtensionId"]}
+                for row in ring_group_rows([g for g in result["ringGroups"] if g["extensionId"] in wanted], routing,
+                                           result.get("targetExtensions"), members)]
+        report_site["dataStatus"] = {**site["dataStatus"], "numberRouting": site["dataStatus"].get("answeringRules", {"status": "unknown"})}
+        report_sites.append(report_site)
+    payload = {key: value for key, value in result.items() if key not in {"targetExtensions", "ringGroups"}}
+    payload["sites"] = report_sites
+    payload["extensionNames"] = extension_names(result["sites"], result.get("targetExtensions"))
+    payload["ringGroupDetailsRequested"] = result.get("ringGroups") is not None
     # JSON lives in a non-executable script element; escape HTML delimiters, not JSON quotes.
     encoded = json.dumps(payload, ensure_ascii=False).replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
     template = Path(__file__).with_name("report-template.html").read_text(encoding="utf-8")
@@ -513,6 +531,200 @@ def render_report(result, files):
 
 def write_json(path, data):
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+ROUTING_COLUMNS = ["siteId", "siteName", "ruleOrder", "ruleId", "ruleName", "enabled", "calledNumber", "callHandlingAction",
+                   "targetExtensionId", "targetExtensionNumber", "targetName", "targetType", "forwardToNumbers", "targetStatus"]
+
+
+def rule_targets(rule):
+    """Return (extension ID or None, forwarding numbers) for where a rule sends calls."""
+    extension_id = ((rule.get("transfer") or {}).get("extension") or {}).get("id")
+    numbers = []
+    unconditional = (rule.get("unconditionalForwarding") or {}).get("phoneNumber")
+    if isinstance(unconditional, str):
+        numbers.append(unconditional)
+    for forwarding_rule in (rule.get("forwarding") or {}).get("rules") or []:
+        numbers.extend(n.get("phoneNumber") for n in forwarding_rule.get("forwardingNumbers") or [] if n.get("phoneNumber"))
+    return (None if extension_id is None else str(extension_id)), [n for n in numbers if n]
+
+
+def unresolved_target_ids(sites):
+    known = {str(m.get("id")) for site in sites for m in site.get("members") or []}
+    wanted = {rule_targets(rule)[0] for site in sites for field in ("answeringRules", "customRules") for rule in site.get(field) or []}
+    return {i for i in wanted if i and i not in known}
+
+
+def extension_names(sites, extra_extensions=None):
+    """Name, extension number and type for every extension a rule transfers to, so the report can show names instead of IDs."""
+    lookup = {str(e.get("id")): e for e in extra_extensions or []}
+    lookup.update({str(m.get("id")): m for site in sites for m in site.get("members") or []})
+    wanted = {rule_targets(rule)[0] for site in sites for field in ("answeringRules", "customRules") for rule in site.get(field) or []}
+    wanted |= {str(((rule.get("voicemail") or {}).get("recipient") or {}).get("id")) for site in sites
+               for rule in site.get("answeringRules") or [] if ((rule.get("voicemail") or {}).get("recipient") or {}).get("id")}
+    return {i: {key: lookup[i].get(key) for key in ("name", "extensionNumber", "type")} for i in wanted if i in lookup}
+
+
+RING_GROUP_COLUMNS = ["ringGroupExtensionId", "ringGroupName", "ringGroupExtensionNumber", "ringGroupType", "usedByRules",
+                      "ringingMode", "ringOrder", "ringDurationSeconds", "ringCount", "ringEntryEnabled", "memberKind",
+                      "memberExtensionId", "memberName", "memberExtensionNumber", "memberExtensionType", "ringEntryNumber",
+                      "deviceName", "deviceType", "deviceModel", "serialOrMac", "deviceStatus", "deviceDid", "deviceLineType",
+                      "deviceId", "status"]
+V2 = "/restapi/v2/accounts/~/extensions"
+
+
+def target_extension_ids(sites):
+    return {i for site in sites for rule in site.get("customRules") or [] for i in [rule_targets(rule)[0]] if i}
+
+
+def ring_entries(rule, source):
+    """Normalize ring settings from the new (v2 work-hours) or legacy (v1 business-hours) call handling API."""
+    entries, mode = [], None
+    if source == "v2":
+        dispatching = (rule or {}).get("dispatching") or {}
+        mode = dispatching.get("type")
+        actions = [a for a in dispatching.get("actions") or [] if a.get("type") in ("RingGroupAction", "RingAlwaysGroupAction")]
+        for order, action in enumerate(actions, 1):
+            for target in action.get("targets") or []:
+                kind = {"CoworkerRingTarget": "Co-worker", "AllDesktopRingTarget": "Desktop apps", "AllMobileRingTarget": "Mobile apps",
+                        "PhoneNumberRingTarget": "External number", "DeviceRingTarget": "Device"}.get(target.get("type"), target.get("type"))
+                entries.append({"order": order, "duration": action.get("duration"), "enabled": action.get("enabled"), "kind": kind,
+                                "extensionId": None if not (target.get("extension") or {}).get("id") else str(target["extension"]["id"]),
+                                "name": target.get("name"), "number": (target.get("destination") or {}).get("phoneNumber")})
+    elif rule:
+        forwarding = (rule or {}).get("forwarding") or {}
+        mode = forwarding.get("ringingMode")
+        for item in forwarding.get("rules") or []:
+            for number in item.get("forwardingNumbers") or []:
+                entries.append({"order": item.get("index"), "ringCount": item.get("ringCount"), "enabled": item.get("enabled"),
+                                "kind": number.get("type") or "Device or number", "extensionId": None,
+                                "name": number.get("label"), "number": number.get("phoneNumber")})
+    return entries, mode
+
+
+def read_ring_rule(rc, ctx, extension_id):
+    """Prefer the new call handling API; accounts not yet migrated fall back to the legacy business-hours rule."""
+    encoded = quote(extension_id, safe="")
+    try:
+        return rc.get(f"{V2}/{encoded}/comm-handling/voice/state-rules/work-hours"), "v2", None
+    except (ExportError, OSError, http.client.HTTPException):
+        rule, error = attempt(ctx, f"extension {extension_id} ring settings", lambda: rc.get(f"{BASE}/extension/{encoded}/answering-rule/business-hours-rule"))
+        return rule, "v1", error
+
+
+def read_extension_and_devices(rc, ctx, extension_id, with_devices=True):
+    base = f"{BASE}/extension/{quote(extension_id, safe='')}"
+    extension, e1 = attempt(ctx, f"extension {extension_id}", lambda: rc.get(base))
+    devices, e2 = (None, None)
+    if with_devices and (extension or {}).get("type") != "IvrMenu":
+        devices, e2 = attempt(ctx, f"extension {extension_id} devices", lambda: rc.get_all(f"{base}/device"))
+    return extension, devices, [e for e in (e1, e2) if e]
+
+
+def fetch_ring_groups(rc, ctx, ids):
+    """Read each target extension, its devices and ring settings, then each ring member's extension and devices (read-only GETs)."""
+    groups, members = [], {}
+    ordered = sorted(ids)
+    for number, extension_id in enumerate(ordered, 1):
+        ctx["log"].info(f"ring group details {number}/{len(ordered)}: extension {extension_id}")
+        extension, devices, errors = read_extension_and_devices(rc, ctx, extension_id)
+        rule, source, entries = None, None, []
+        if (extension or {}).get("type") != "IvrMenu":
+            rule, source, error = read_ring_rule(rc, ctx, extension_id)
+            if error:
+                errors.append(error)
+            entries, _ = ring_entries(rule, source)
+        groups.append({"extensionId": extension_id, "extension": extension, "devices": devices, "ringRule": rule, "ringRuleSource": source,
+                       "memberDetails": members, "errors": errors})
+    wanted = sorted({e["extensionId"] for g in groups for e in ring_entries(g["ringRule"], g["ringRuleSource"])[0] if e["extensionId"]})
+    for number, member_id in enumerate(wanted, 1):
+        ctx["log"].info(f"ring member details {number}/{len(wanted)}: extension {member_id}")
+        extension, devices, errors = read_extension_and_devices(rc, ctx, member_id)
+        members[member_id] = {"extension": extension, "devices": devices, "errors": errors}
+    for group in groups:
+        found = [e["message"] for e in group["errors"]]
+        found += [m for e in ring_entries(group["ringRule"], group["ringRuleSource"])[0] if e["extensionId"]
+                  for m in [x["message"] for x in members.get(e["extensionId"], {}).get("errors", [])]]
+        group["status"] = "complete" if not found else "incomplete: " + "; ".join(dict.fromkeys(found))
+    return groups
+
+
+def digits(value):
+    return re.sub(r"\D", "", str(value or ""))[-10:]  # ignore country code so "(480) 613-7524" matches "+14806137524"
+
+
+def device_lines(devices):
+    lines = []
+    for device in devices or []:
+        for line in device.get("phoneLines") or [{}]:
+            lines.append({"deviceName": device.get("name") or device.get("computerName"), "deviceType": device.get("type"),
+                          "deviceModel": (device.get("model") or {}).get("name") or device.get("sku"),
+                          "serialOrMac": device.get("serial"), "deviceStatus": device.get("status"),
+                          "deviceDid": (line.get("phoneInfo") or {}).get("phoneNumber"), "deviceLineType": line.get("lineType"),
+                          "deviceId": device.get("id"), "used": False})
+    return lines
+
+
+def ring_group_rows(groups, routing, extra_extensions=None, members=None):
+    """One row per ring entry (co-workers expanded to their devices and DIDs), then the ring group's own devices."""
+    lookup = {str(e.get("id")): e for e in extra_extensions or []}
+    lookup.update({str(m.get("id")): m for m in members or []})
+    rows = []
+    strip = lambda d: {k: v for k, v in d.items() if k != "used"}
+    for group in groups:
+        extension_id = group["extensionId"]
+        extension = group["extension"] or lookup.get(extension_id) or {}
+        used_by = " | ".join(dict.fromkeys(r["ruleName"] for r in routing if r["targetExtensionId"] == extension_id and r["ruleName"]))
+        base = {"ringGroupExtensionId": extension_id, "ringGroupName": extension.get("name"),
+                "ringGroupExtensionNumber": extension.get("extensionNumber"), "ringGroupType": extension.get("type"),
+                "usedByRules": used_by, "status": group["status"]}
+        own = device_lines(group["devices"])
+        entries, mode = ring_entries(group["ringRule"], group.get("ringRuleSource"))
+        base["ringingMode"] = mode
+        for entry in entries:
+            row = {**base, "ringOrder": entry.get("order"), "ringDurationSeconds": entry.get("duration"), "ringCount": entry.get("ringCount"),
+                   "ringEntryEnabled": entry.get("enabled"), "memberKind": entry["kind"], "ringEntryNumber": entry.get("number"),
+                   "memberName": entry.get("name")}
+            if entry.get("extensionId"):
+                detail = group["memberDetails"].get(entry["extensionId"]) or {}
+                member = detail.get("extension") or lookup.get(entry["extensionId"]) or {}
+                row.update({"memberExtensionId": entry["extensionId"], "memberName": member.get("name"),
+                            "memberExtensionNumber": member.get("extensionNumber"), "memberExtensionType": member.get("type")})
+                lines = device_lines(detail.get("devices"))
+                rows.extend([{**row, **strip(line)} for line in lines] or [row])
+                continue
+            match = next((l for l in own if not l["used"] and digits(l["deviceDid"]) and digits(l["deviceDid"]) == digits(entry.get("number"))), None)
+            if match:
+                match["used"] = True
+            rows.append({**row, **strip(match or {})})
+        for line in own:
+            if not line["used"]:
+                rows.append({**base, "memberKind": "Ring group's own device", **strip(line)})
+        if not entries and not own:
+            rows.append(base)
+    return rows
+
+
+def number_routing_rows(sites, extra_extensions=None):
+    """One row per custom rule and called number, with the target resolved to a name where known."""
+    lookup = {str(e.get("id")): e for e in extra_extensions or []}
+    for site in sites:
+        lookup.update({str(m.get("id")): m for m in site.get("members") or []})
+    rows = []
+    for site in sites:
+        for order, rule in enumerate(site.get("customRules") or [], 1):
+            extension_id, forward_numbers = rule_targets(rule)
+            target = lookup.get(extension_id) if extension_id else None
+            called = [n.get("phoneNumber") for n in rule.get("calledNumbers") or [] if isinstance(n, dict)] or [""]
+            status = "" if extension_id is None else ("resolved" if target else "extension not found in site members or account listing")
+            for number in called:
+                rows.append({"siteId": site["id"], "siteName": site["name"], "ruleOrder": order, "ruleId": rule.get("id"),
+                             "ruleName": rule.get("name"), "enabled": rule.get("enabled"), "calledNumber": number,
+                             "callHandlingAction": rule.get("callHandlingAction"), "targetExtensionId": extension_id,
+                             "targetExtensionNumber": (target or {}).get("extensionNumber"), "targetName": (target or {}).get("name"),
+                             "targetType": (target or {}).get("type"), "forwardToNumbers": " | ".join(forward_numbers),
+                             "targetStatus": status})
+    return rows
 
 
 def write_outputs(directory, result, responses):
@@ -544,6 +756,14 @@ def write_outputs(directory, result, responses):
         files.append(name)
         write_csv(directory / name, csv_rows(result["sites"], field),
                   ["siteId", "siteName", "timeZone", "timeZoneSource", "order", "id", "name", "type", "enabled", "detailStatus", "detailError"])
+    if result.get("ringGroups") is not None:
+        files.append("ring-group-details.csv")
+        members = [m for site in result["sites"] for m in site.get("members") or []]
+        write_csv(directory / "ring-group-details.csv",
+                  ring_group_rows(result["ringGroups"], number_routing_rows(result["sites"], result.get("targetExtensions")),
+                                  result.get("targetExtensions"), members), RING_GROUP_COLUMNS)
+    files.append("number-routing.csv")
+    write_csv(directory / "number-routing.csv", number_routing_rows(result["sites"], result.get("targetExtensions")), ROUTING_COLUMNS)
     response_index = []
     for index, response in enumerate(responses, 1):
         name = f"{index:05d}.json"
@@ -552,7 +772,7 @@ def write_outputs(directory, result, responses):
     write_json(raw_responses / "index.json", response_index)
     files.extend(["raw/sites/", "raw/responses/", "report.html", "SUMMARY.md", "export-manifest.json"])
     (directory / "report.html").write_text(render_report(result, files), encoding="utf-8")
-    manifest = {key: value for key, value in result.items() if key != "sites"}
+    manifest = {key: value for key, value in result.items() if key not in {"sites", "targetExtensions", "ringGroups"}}
     manifest["files"] = files
     write_json(directory / "export-manifest.json", manifest)
     summary = ["# RingCentral - Export Site Configurations", "", f'- Account: {result["account"].get("name")}',
@@ -591,6 +811,12 @@ def run_export(opts, client=None):
         ("Account regional settings", regional), ("Account info", account.get("regionalSettings"))
     )
     sites = export_sites(rc, opts, ctx)
+    target_extensions = None
+    if unresolved_target_ids(sites):
+        target_extensions, _ = attempt(ctx, "extension listing for rule targets", lambda: rc.get_all(f"{BASE}/extension"))
+    ring_groups = None
+    if getattr(opts, "ring_group_details", False):
+        ring_groups = fetch_ring_groups(rc, ctx, target_extension_ids(sites))
     if not account_info["timeZone"]["value"]:
         ctx["notes"].append("Account time zone was not returned. Schedules retain their configured wall-clock times; no browser/local time zone is assumed.")
     incomplete_details = sum(
@@ -611,7 +837,7 @@ def run_export(opts, client=None):
                           "envFile": "(set)" if opts.env_file else None, "open": opts.open},
               "startedAt": started, "finishedAt": datetime.now(timezone.utc).isoformat(),
               "counts": counts, "apiRequests": rc.requests, "apiRetries": rc.retries,
-              "notes": ctx["notes"], "errors": ctx["errors"], "sites": sites}
+              "notes": ctx["notes"], "errors": ctx["errors"], "sites": sites, "targetExtensions": target_extensions, "ringGroups": ring_groups}
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S_%f")
     directory = opts.out.resolve() / f'{safe_name(account_info.get("name") or account_info.get("id"))}_{stamp}'
     manifest = write_outputs(directory, result, rc.responses)

@@ -332,6 +332,131 @@ class FakeResponse:
         return self.data
 
 
+class NumberRoutingTests(unittest.TestCase):
+    SITE = {"id": "1", "name": "Dental", "members": [{"id": "10", "name": "Denver Ring Group", "extensionNumber": "1001", "type": "Department"}],
+            "customRules": [
+                {"id": "r1", "name": "1001 - Denver", "enabled": True, "callHandlingAction": "TransferToExtension",
+                 "calledNumbers": [{"phoneNumber": "+17203985509"}, {"phoneNumber": "+17203985510"}], "transfer": {"extension": {"id": 10}}},
+                {"id": "r2", "name": "Unknown target", "enabled": False, "callHandlingAction": "TransferToExtension",
+                 "calledNumbers": [{"phoneNumber": "+15550000009"}], "transfer": {"extension": {"id": 99}}},
+                {"id": "r3", "name": "Forward", "enabled": True, "callHandlingAction": "ForwardCalls",
+                 "forwarding": {"rules": [{"forwardingNumbers": [{"phoneNumber": "+15550000003"}]}]}}]}
+
+    def test_rows_per_called_number_with_resolved_target(self):
+        rows = app.number_routing_rows([self.SITE])
+        self.assertEqual([r["calledNumber"] for r in rows], ["+17203985509", "+17203985510", "+15550000009", ""])
+        self.assertEqual((rows[0]["targetName"], rows[0]["targetExtensionNumber"], rows[0]["targetType"], rows[0]["targetStatus"]),
+                         ("Denver Ring Group", "1001", "Department", "resolved"))
+        self.assertIn("not found", rows[2]["targetStatus"])
+        self.assertEqual(rows[2]["targetExtensionId"], "99")
+        self.assertEqual(rows[3]["forwardToNumbers"], "+15550000003")
+        self.assertEqual(rows[3]["targetStatus"], "")
+
+    def test_report_has_number_routing_tab_and_data(self):
+        site = {**self.SITE, "dataStatus": {"answeringRules": {"status": "complete"}}}
+        report = app.render_report({"sites": [site]}, [])
+        self.assertIn('data-category="numberRouting"', report)
+        routing = report_payload(report)["sites"][0]["numberRouting"]
+        self.assertEqual([r["name"] for r in routing][:2], ["+17203985509", "+17203985510"])
+        self.assertEqual(routing[0]["targetName"], "Denver Ring Group")
+        self.assertEqual(report_payload(report)["sites"][0]["dataStatus"]["numberRouting"]["status"], "complete")
+
+    def test_account_extension_list_resolves_targets_outside_the_site(self):
+        self.assertEqual(app.unresolved_target_ids([self.SITE]), {"99"})
+        rows = app.number_routing_rows([self.SITE], [{"id": 99, "name": "Elsewhere", "extensionNumber": "2000"}])
+        self.assertEqual(rows[2]["targetName"], "Elsewhere")
+
+
+class RingGroupDetailTests(unittest.TestCase):
+    DEVICES = [{"id": "d1", "type": "HardPhone", "name": "1059 1", "serial": "AA:BB:CC:00:00:01", "status": "Online",
+                "model": {"name": "Poly VVX 450"}, "phoneLines": [{"lineType": "Standalone", "phoneInfo": {"phoneNumber": "+14806137524"}}]},
+               {"id": "d2", "type": "HardPhone", "name": "Spare", "serial": "AA:BB:CC:00:00:09", "phoneLines": []}]
+    V1_RULE = {"forwarding": {"ringingMode": "Simultaneously", "rules": [
+        {"index": 1, "ringCount": 4, "enabled": True,
+         "forwardingNumbers": [{"label": "1059 1", "type": "PhoneLine", "phoneNumber": "(480) 613-7524"}]}]}}
+    V2_RULE = {"dispatching": {"type": "RingAtOnce", "actions": [
+        {"type": "PlayWelcomePromptAction", "enabled": False},
+        {"type": "RingGroupAction", "enabled": True, "duration": 20,
+         "targets": [{"type": "CoworkerRingTarget", "extension": {"id": "55"}}]},
+        {"type": "RingGroupAction", "enabled": True, "duration": 30, "targets": [{"type": "AllDesktopRingTarget", "name": "My desktop"}]}]}}
+    MEMBER_DEVICES = [{"id": "m1", "type": "HardPhone", "name": "Front desk", "serial": "11:22:33:44:55:66", "model": {"name": "Yealink T54W"},
+                       "phoneLines": [{"phoneInfo": {"phoneNumber": "+15551230001"}}]}]
+
+    def v1_group(self):
+        return {"extensionId": "10", "extension": {"name": "Queen Creek 6 Ring Group", "extensionNumber": "1011059", "type": "User"},
+                "devices": self.DEVICES, "ringRule": self.V1_RULE, "ringRuleSource": "v1", "memberDetails": {}, "errors": [], "status": "complete"}
+
+    def v2_group(self):
+        member = {"extension": {"id": "55", "name": "Pat Jones", "extensionNumber": "105", "type": "User"}, "devices": self.MEMBER_DEVICES, "errors": []}
+        return {"extensionId": "10", "extension": {"name": "Front Ring Group", "extensionNumber": "1000", "type": "User"},
+                "devices": [], "ringRule": self.V2_RULE, "ringRuleSource": "v2", "memberDetails": {"55": member}, "errors": [], "status": "complete"}
+
+    def test_v1_rows_join_ring_entries_to_devices_and_keep_unlisted_devices(self):
+        rows = app.ring_group_rows([self.v1_group()], [{"targetExtensionId": "10", "ruleName": "1059 - Queen Creek"}])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual((rows[0]["ringGroupName"], rows[0]["ringEntryNumber"], rows[0]["deviceName"], rows[0]["serialOrMac"], rows[0]["deviceDid"]),
+                         ("Queen Creek 6 Ring Group", "(480) 613-7524", "1059 1", "AA:BB:CC:00:00:01", "+14806137524"))
+        self.assertEqual(rows[0]["usedByRules"], "1059 - Queen Creek")
+        self.assertEqual((rows[1]["deviceName"], rows[1]["memberKind"]), ("Spare", "Ring group's own device"))
+
+    def test_v2_rows_expand_coworkers_to_their_devices(self):
+        rows = app.ring_group_rows([self.v2_group()], [])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual((rows[0]["memberKind"], rows[0]["memberName"], rows[0]["memberExtensionNumber"], rows[0]["deviceName"],
+                          rows[0]["serialOrMac"], rows[0]["deviceDid"], rows[0]["ringOrder"], rows[0]["ringDurationSeconds"], rows[0]["ringingMode"]),
+                         ("Co-worker", "Pat Jones", "105", "Front desk", "11:22:33:44:55:66", "+15551230001", 1, 20, "RingAtOnce"))
+        self.assertEqual((rows[1]["memberKind"], rows[1]["memberName"], rows[1]["ringOrder"]), ("Desktop apps", "My desktop", 2))
+
+    def test_fetch_prefers_v2_then_reads_member_devices(self):
+        base = f"{BASE}/extension/10"
+        v2 = f"{app.V2}/10/comm-handling/voice/state-rules/work-hours"
+        client = FixtureClient({base: {"id": "10", "name": "Ring", "type": "User"}, f"{base}/device": lambda q: paginate([], q), v2: self.V2_RULE,
+                                f"{BASE}/extension/55": {"id": "55", "name": "Pat Jones", "type": "User"},
+                                f"{BASE}/extension/55/device": lambda q: paginate(self.MEMBER_DEVICES, q)})
+        ctx = {"errors": [], "notes": [], "log": client.log}
+        group = app.fetch_ring_groups(client, ctx, {"10"})[0]
+        self.assertEqual((group["status"], group["ringRuleSource"]), ("complete", "v2"))
+        self.assertEqual(group["memberDetails"]["55"]["devices"][0]["serial"], "11:22:33:44:55:66")
+        self.assertEqual(ctx["errors"], [])
+
+    def test_fetch_falls_back_to_v1_and_reports_failures_without_stopping(self):
+        base = f"{BASE}/extension/10"
+        v2 = f"{app.V2}/10/comm-handling/voice/state-rules/work-hours"
+        client = FixtureClient({base: {"id": "10", "type": "User"}, f"{base}/device": app.RcError(403, {}, base), v2: app.RcError(403, {}, v2),
+                                f"{base}/answering-rule/business-hours-rule": self.V1_RULE})
+        ctx = {"errors": [], "notes": [], "log": client.log}
+        group = app.fetch_ring_groups(client, ctx, {"10"})[0]
+        self.assertEqual(group["ringRuleSource"], "v1")
+        self.assertTrue(group["status"].startswith("incomplete"))
+        self.assertEqual(len(ctx["errors"]), 1)
+        self.assertEqual(len(app.ring_group_rows([group], [])), 1)
+
+    def test_ivr_targets_are_skipped_cleanly(self):
+        base = f"{BASE}/extension/10"
+        client = FixtureClient({base: {"id": "10", "type": "IvrMenu", "name": "Menu"}})
+        ctx = {"errors": [], "notes": [], "log": client.log}
+        group = app.fetch_ring_groups(client, ctx, {"10"})[0]
+        self.assertEqual((group["status"], ctx["errors"]), ("complete", []))
+
+    def test_report_carries_extension_names_for_destinations(self):
+        site = {**NumberRoutingTests.SITE, "dataStatus": {"answeringRules": {"status": "complete"}}}
+        site["answeringRules"] = site["customRules"]
+        data = report_payload(app.render_report({"sites": [site]}, []))
+        self.assertEqual(data["extensionNames"]["10"], {"name": "Denver Ring Group", "extensionNumber": "1001", "type": "Department"})
+        self.assertNotIn("99", data["extensionNames"])
+        self.assertFalse(data["ringGroupDetailsRequested"])
+
+    def test_flag_is_off_by_default_and_report_gets_tab_data(self):
+        self.assertFalse(opts("--all-sites").ring_group_details)
+        self.assertTrue(opts("--all-sites", "--ring-group-details").ring_group_details)
+        site = {**NumberRoutingTests.SITE, "dataStatus": {"answeringRules": {"status": "complete"}}}
+        site["customRules"] = [{**site["customRules"][0], "transfer": {"extension": {"id": 10}}}]
+        report = app.render_report({"sites": [site], "ringGroups": [self.v2_group()]}, [])
+        details = report_payload(report)["sites"][0]["ringGroupDetails"]
+        self.assertEqual(details[0]["serialOrMac"], "11:22:33:44:55:66")
+        self.assertNotIn("ringGroups", report_payload(report))
+
+
 class TransportTests(unittest.TestCase):
     def setUp(self):
         self.environment = patch.dict(os.environ, {}, clear=True)

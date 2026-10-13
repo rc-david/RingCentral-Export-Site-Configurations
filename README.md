@@ -30,6 +30,17 @@ settings are not requested. Greetings/prompts include the returned metadata and 
 not downloaded audio binaries. "All data" means all fields returned by the listed
 configuration endpoints, not every RingCentral account resource or Admin Portal setting.
 
+## Ring group details (optional)
+
+Add `--ring-group-details` to look one level deeper: for every extension that a custom
+rule transfers to, the export also reads that extension, its devices, and its
+business-hours ring settings. This costs about three extra read-only API calls per
+target extension, so it is off by default.
+
+```powershell
+python .\rc-config-export.py --env-file rc-config-export.env --site-name "Dental Offices" --ring-group-details --out .\exports
+```
+
 ## Credentials and permissions
 
 Use your existing credentials file unchanged, or create one:
@@ -170,6 +181,8 @@ exports are never overwritten.
 | `sites.csv` | Site summary, rule counts, discovery status, and separate columns for site settings/business hours/IVR settings/collection diagnostics |
 | `site-answering-rules.csv` | Every rule, including built-in rules |
 | `site-custom-rules.csv` | Custom rules, including disabled ones |
+| `number-routing.csv` | One row per custom rule and called number, showing where calls go: the target extension's name, extension number and type (for example a ring group, user or IVR menu), or the numbers a rule forwards to. Targets are matched by extension ID against site members, then the account extension list. Also shown as the **Number routing** tab in `report.html` |
+| `ring-group-details.csv` | Only with `--ring-group-details`. For each extension that a custom rule transfers to (such as a ring group user): its name and extension number, the rules that use it, its ring settings (order, label, number), and its devices (name, model, serial/MAC, status, phone-line number). Ring entries are matched to devices by phone-line number; devices not in the ring settings are listed with `inRingSettings` = no. Also shown as the **Ring group devices** tab in `report.html` |
 | `site-members.csv` | All returned site member records |
 | `site-phone-numbers.csv` | Site phone-number records |
 | `site-ivr-menus.csv` | Full IVR menu definitions |

@@ -66,6 +66,8 @@ details{margin:6px 0}summary{font-weight:600;padding:4px 0}pre{white-space:pre-w
 <button data-category="answeringRules" aria-pressed="true">Rules</button>
 <button data-category="settings" aria-pressed="false">Site settings</button>
 <button data-category="members" aria-pressed="false">Members</button>
+<button data-category="numberRouting" aria-pressed="false">Number routing</button>
+<button data-category="ringGroupDetails" aria-pressed="false" id="ring-tab" hidden>Ring group devices</button>
 <button data-category="phoneNumbers" aria-pressed="false">Phone numbers</button>
 <button data-category="ivrMenus" aria-pressed="false">IVR menus</button>
 <button data-category="emergencyLocations" aria-pressed="false">Emergency locations</button>
@@ -187,21 +189,41 @@ function scheduleCell(schedule,zone) {
  const text = scheduleText(schedule,zone);
  return '<span class="summary-text" title="'+escape(text)+'">'+escape(text)+'</span>';
 }
+const extNames = data.extensionNames || {};
+function extLabel(id, fallback) {
+ const e = extNames[String(id)];
+ return e ? [e.name, e.extensionNumber && 'Ext. '+e.extensionNumber].filter(Boolean).join(' | ') : fallback;
+}
 function destinationText(rule) {
  const transfer = rule.transfer?.extension;
  const parts = [];
- if (transfer) parts.push(transfer.name || transfer.extensionNumber || transfer.id || transfer.uri || 'Extension');
+ if (transfer) parts.push(extLabel(transfer.id, transfer.name || transfer.extensionNumber || transfer.id || transfer.uri || 'Extension'));
  if (rule.unconditionalForwarding?.phoneNumber) parts.push(rule.unconditionalForwarding.phoneNumber);
  for (const route of rule.forwarding?.rules || []) for (const number of route.forwardingNumbers || []) parts.push(number.phoneNumber || number.label || number.id || 'Forwarding target');
  if (rule.voicemail?.recipient) {
   const recipient = rule.voicemail.recipient;
-  parts.push('Voicemail: '+(recipient.extensionNumber || recipient.displayName || recipient.id || 'recipient'));
+  parts.push('Voicemail: '+extLabel(recipient.id, recipient.extensionNumber || recipient.displayName || recipient.id || 'recipient'));
  }
  return parts.join('; ') || 'Not returned';
 }
-const categoryNames = {answeringRules:'rules',settings:'site settings',members:'members',phoneNumbers:'phone numbers',ivrMenus:'IVR menus',emergencyLocations:'emergency locations'};
+const ringByExt = {}, ringSite = {};
+for (const site of data.sites) for (const row of site.ringGroupDetails || []) {
+ const ext = String(row.ringGroupExtensionId);
+ if (ringSite[ext] === undefined) ringSite[ext] = site.id;
+ if (ringSite[ext] === site.id) (ringByExt[ext] ||= []).push(row);
+}
+function ringSection(extId, group) {
+ if (extId === undefined || extId === null || extId === '') return '';
+ const ext = String(extId), rows = ringByExt[ext];
+ const title = 'Ring group members & devices'+(extNames[ext] ? ' - '+escape(extNames[ext].name || ext) : '');
+ if (!rows) return group(title,'<p class="muted">'+(data.ringGroupDetailsRequested ? 'No ring entries or devices were returned for this extension.' : 'Not collected. Re-run the export with <code>--ring-group-details</code> to list the devices, phone-line numbers and MAC/serial numbers behind this extension.')+'</p>',true);
+ const cell = value => '<td>'+escape(value ?? '')+'</td>';
+ const head = ['Order','Type','Member','Ext.','Number / DID','Device','Model','MAC / serial','Status'];
+ return group(title,'<table class="schedule"><thead><tr>'+head.map(h => '<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(x => '<tr>'+[x.ringOrder,x.memberKind,x.memberName,x.memberExtensionNumber,x.ringEntryNumber || x.deviceDid,x.deviceName,x.deviceModel,x.serialOrMac,x.deviceStatus].map(cell).join('')+'</tr>').join('')+'</tbody></table>'+(rows[0].status && rows[0].status !== 'complete' ? '<p class="notice">'+escape(rows[0].status)+'</p>' : ''),true);
+}
+const categoryNames = {answeringRules:'rules',settings:'site settings',members:'members',numberRouting:'number routing',ringGroupDetails:'ring group devices',phoneNumbers:'phone numbers',ivrMenus:'IVR menus',emergencyLocations:'emergency locations'};
 const categories = Object.fromEntries(Object.keys(categoryNames).map(k => [k,[]]));
-const excludedSettings = new Set(['answeringRules','answeringRuleDetails','members','phoneNumbers','ivrMenus','ivrMenuDetails','emergencyLocations','emergencyLocationDetails']);
+const excludedSettings = new Set(['answeringRules','answeringRuleDetails','members','numberRouting','ringGroupDetails','phoneNumbers','ivrMenus','ivrMenuDetails','emergencyLocations','emergencyLocationDetails']);
 for (const site of data.sites) {
  const settings = Object.fromEntries(Object.entries(site).filter(([key]) => !excludedSettings.has(key)));
  for (const category of Object.keys(categories)) {
@@ -226,9 +248,10 @@ $('stats').innerHTML = Object.entries(data.counts).map(([k,v]) => '<span><strong
 if (data.errors.length) $('export-warning').innerHTML = '<p class="notice">Export is incomplete. Counts cover discovered records only; unavailable listings have unknown counts, not zero.</p>';
 $('diagnostic-label').textContent = 'Export notes and unavailable endpoints ('+data.errors.length+')';
 $('diagnostic-content').innerHTML = '<ul>'+data.notes.map(n => '<li>'+escape(n)+'</li>').join('')+'</ul>'+fields(data.errors);
+if (categories.ringGroupDetails.length) $('ring-tab').hidden = false;
 let category = 'answeringRules', page = 1, selectedKey = null, filtered = [];
 const columnWidths = {};
-const defaultWidths = () => category === 'answeringRules' ? [160,50,280,135,100,520,170,300,100] : [180,300,500,110];
+const defaultWidths = () => category === 'answeringRules' ? [160,50,280,135,100,520,170,300,100] : category === 'numberRouting' ? [160,180,260,90,420,110] : category === 'ringGroupDetails' ? [160,220,240,300,240,110] : [180,300,500,110];
 function applyColumnWidths() {
  const widths = columnWidths[category] || defaultWidths();
  $('column-widths').innerHTML = widths.map(width => '<col style="width:'+width+'px">').join('');
@@ -289,6 +312,8 @@ function rowCells(item) {
  const select = '<button class="open-record" title="'+escape(title)+'" data-key="'+item.key+'">'+escape(title)+'</button><div class="small muted">'+escape(r.id)+'</div>';
  const badge = '<span class="badge '+(status === 'complete' ? 'good' : 'warn')+'">'+escape(status)+'</span>';
  if (category === 'answeringRules') return [compact(item.site.name),item.index+1,select,escape(r.type),'<span class="'+(r.enabled === false ? 'disabled' : '')+'">'+(r.enabled === true ? 'Enabled' : r.enabled === false ? 'Disabled' : 'Unknown')+'</span>',scheduleCell(r.schedule,item.site.timeZone)+'<div class="small muted">'+escape(zoneLabel(item.site.timeZone))+'</div>',compact(r.callHandlingAction || ''),compact(item.destination),badge];
+ if (category === 'numberRouting') return [compact(item.site.name),select,compact(r.ruleName || ''),'<span class="'+(r.enabled === false ? 'disabled' : '')+'">'+(r.enabled === true ? 'Enabled' : r.enabled === false ? 'Disabled' : 'Unknown')+'</span>',compact([r.targetName,r.targetExtensionNumber && 'Ext. '+r.targetExtensionNumber,r.targetType,r.forwardToNumbers && 'Forward to '+r.forwardToNumbers,!r.targetName && r.targetExtensionId && 'Extension ID '+r.targetExtensionId+' (unresolved)',r.targetName ? '' : r.callHandlingAction].filter(Boolean).join(' | ')),badge];
+ if (category === 'ringGroupDetails') return [compact(item.site.name),select,compact([r.ringGroupExtensionNumber && 'Ext. '+r.ringGroupExtensionNumber,r.ringGroupType,r.usedByRules && 'Rules: '+r.usedByRules].filter(Boolean).join(' | ')),compact([r.memberKind,r.memberName,r.memberExtensionNumber && 'Ext. '+r.memberExtensionNumber,r.ringEntryNumber || r.deviceDid].filter(Boolean).join(' | ')),compact([r.deviceName,r.deviceModel,r.serialOrMac && 'MAC/serial '+r.serialOrMac,r.deviceStatus].filter(Boolean).join(' | ')),badge];
  let summary;
  if (category === 'phoneNumbers') summary = [r.location,r.usageType,r.paymentType,r.status].filter(Boolean).join(' | ');
  else if (category === 'members') summary = [r.extensionNumber,r.type,r.status,r.contact?.email].filter(Boolean).join(' | ');
@@ -305,7 +330,7 @@ function renderTable() {
  const pages = Math.max(1,Math.ceil(filtered.length/size));
  page = Math.max(1,Math.min(page,pages));
  const start = (page-1)*size;
- const columns = category === 'answeringRules' ? ['Site','#','Rule / ID','Type','State','Schedule','Action','Destination','Details'] : ['Site','Record / ID','Summary','Details'];
+ const columns = category === 'answeringRules' ? ['Site','#','Rule / ID','Type','State','Schedule','Action','Destination','Details'] : category === 'numberRouting' ? ['Site','Called number / rule ID','Rule','State','Routes to','Details'] : category === 'ringGroupDetails' ? ['Site','Ring group / ID','Extension & rules','Ring member / DID','Device (name, model, MAC)','Details'] : ['Site','Record / ID','Summary','Details'];
  $('columns').innerHTML = '<tr>'+columns.map((c,index) => '<th scope="col">'+c+'<span class="column-resizer" data-column="'+index+'" role="separator" aria-orientation="vertical" aria-label="Resize '+c+' column" aria-valuemin="48" tabindex="0" title="Drag to resize; arrow keys adjust width"></span></th>').join('')+'</tr>';
  applyColumnWidths();
  const visible = filtered.slice(start,start+size);
@@ -333,6 +358,7 @@ function showDetail(item) {
   groups += group('Schedule',schedule);
   groups += group('Caller conditions / called numbers',detailFields({callers:r.callers,calledNumbers:r.calledNumbers}));
   groups += group('Routing & destinations',detailFields({transfer:r.transfer,forwarding:r.forwarding,unconditionalForwarding:r.unconditionalForwarding}));
+  groups += ringSection(r.transfer?.extension?.id,group);
   if (r.voicemail !== undefined) groups += group('Voicemail',detailFields(r.voicemail));
   if (r.greetings !== undefined || r.screening !== undefined) groups += group('Greetings & screening',detailFields({greetings:r.greetings,screening:r.screening}));
   const additional = Object.fromEntries(Object.entries(r).filter(([k]) => !known.has(k)));
@@ -345,6 +371,7 @@ function showDetail(item) {
   const scalarFields = Object.fromEntries(Object.entries(r).filter(([,v]) => v === null || typeof v !== 'object'));
   groups += group('Identity & properties',detailFields(scalarFields),true);
   for (const [key,value] of Object.entries(r)) if (value !== null && typeof value === 'object') groups += group(escape(label(key)),detailFields(value));
+  if (category === 'numberRouting') groups += ringSection(r.targetExtensionId,group);
  }
  const error = item.status.error ? '<p class="notice">Listing entry only: '+escape(item.status.error.message)+'</p>' : '';
  const dateNote = r.schedule?.ranges && !ianaZone(item.site.timeZone) ? ' | Dated values retain their returned offsets; no IANA time zone was available for conversion.' : '';

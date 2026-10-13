@@ -33,12 +33,21 @@ configuration endpoints, not every RingCentral account resource or Admin Portal 
 ## Ring group details (optional)
 
 Add `--ring-group-details` to look one level deeper: for every extension that a custom
-rule transfers to, the export also reads that extension, its devices, and its
-business-hours ring settings. This costs about three extra read-only API calls per
-target extension, so it is off by default.
+rule transfers to (typically a ring group user), the export reads that extension, its
+devices, and its work-hours ring settings, then reads each ring member's extension and
+devices. Ring settings come from the new call handling API
+(`state-rules/work-hours`); accounts that have not been migrated fall back to the legacy
+business-hours rule. This costs several extra read-only API calls per target and per
+member, so it is off by default. IVR menu targets are skipped because they have no
+devices or ring settings.
+
+In `report.html`, clicking a rule (on the Rules or Number routing tab) shows its
+**Ring group members & devices**: ring order, co-worker name and extension, device
+name and model, MAC/serial, status and phone-line number (DID). Without the flag, the
+panel says the data was not collected.
 
 ```powershell
-python .\rc-config-export.py --env-file rc-config-export.env --site-name "Dental Offices" --ring-group-details --out .\exports
+python .\rc-config-export.py --env-file rc-config-export.env --all-sites --ring-group-details --out .\exports
 ```
 
 ## Credentials and permissions
@@ -182,7 +191,7 @@ exports are never overwritten.
 | `site-answering-rules.csv` | Every rule, including built-in rules |
 | `site-custom-rules.csv` | Custom rules, including disabled ones |
 | `number-routing.csv` | One row per custom rule and called number, showing where calls go: the target extension's name, extension number and type (for example a ring group, user or IVR menu), or the numbers a rule forwards to. Targets are matched by extension ID against site members, then the account extension list. Also shown as the **Number routing** tab in `report.html` |
-| `ring-group-details.csv` | Only with `--ring-group-details`. For each extension that a custom rule transfers to (such as a ring group user): its name and extension number, the rules that use it, its ring settings (order, label, number), and its devices (name, model, serial/MAC, status, phone-line number). Ring entries are matched to devices by phone-line number; devices not in the ring settings are listed with `inRingSettings` = no. Also shown as the **Ring group devices** tab in `report.html` |
+| `ring-group-details.csv` | Only with `--ring-group-details`. One row per ring entry for each extension that a custom rule transfers to: ring order and duration, the entry type (co-worker, desktop apps, mobile apps, device, external number), and for co-workers their name, extension number, and each device with its model, serial/MAC (hardware phones only), status and phone-line number. The ring group's own devices follow as separate rows. Also shown as the **Ring group devices** tab in `report.html` |
 | `site-members.csv` | All returned site member records |
 | `site-phone-numbers.csv` | Site phone-number records |
 | `site-ivr-menus.csv` | Full IVR menu definitions |
